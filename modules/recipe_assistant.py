@@ -7,6 +7,14 @@ step-by-step instructions, ingredient substitutions, and zero-waste cooking tips
 import json
 import streamlit as st
 
+PANTRY_OPTIONS = [
+    "Chicken breast", "Salmon fillet", "Ground beef", "Tofu", "Eggs",
+    "Broccoli", "Spinach", "Bell pepper", "Zucchini", "Carrots", "Avocado",
+    "Quinoa", "Brown rice", "Rolled oats", "Pasta", "Sweet potato", "Sourdough bread",
+    "Garlic", "Onion", "Ginger", "Lemon", "Olive oil", "Soy sauce", "Parmesan",
+    "Canned tomatoes", "Basil", "Greek yogurt", "Feta cheese", "Walnuts"
+]
+
 def render_recipe_assistant_tab(ai_service):
     st.markdown("""
         <div class="glass-card glass-card-accent">
@@ -37,27 +45,26 @@ def render_recipe_assistant_tab(ai_service):
             key="recipe_basket_preset"
         )
 
-        default_items = []
         if "Mediterranean" in basket_preset:
-            default_items = ["Chicken breast", "Broccoli", "Quinoa", "Olive oil", "Garlic", "Lemon"]
+            raw_defaults = ["Chicken breast", "Broccoli", "Quinoa", "Olive oil", "Garlic", "Lemon"]
         elif "Asian" in basket_preset:
-            default_items = ["Tofu", "Bell pepper", "Broccoli", "Soy sauce", "Garlic", "Ginger", "Brown rice"]
+            raw_defaults = ["Tofu", "Bell pepper", "Broccoli", "Soy sauce", "Garlic", "Ginger", "Brown rice"]
         elif "Italian" in basket_preset:
-            default_items = ["Pasta", "Canned tomatoes", "Garlic", "Basil", "Parmesan", "Olive oil"]
+            raw_defaults = ["Pasta", "Canned tomatoes", "Garlic", "Basil", "Parmesan", "Olive oil"]
         else:
-            default_items = ["Eggs", "Spinach", "Avocado", "Sourdough bread", "Olive oil"]
+            raw_defaults = ["Eggs", "Spinach", "Avocado", "Sourdough bread", "Olive oil"]
 
-        # Multiselect with tags & text area
+        # Ensure all default items strictly exist in PANTRY_OPTIONS
+        safe_defaults = [item for item in raw_defaults if item in PANTRY_OPTIONS]
+
+        # Use basket_preset in key to prevent Streamlit state collisions when changing presets
+        multiselect_key = f"pantry_ms_{abs(hash(basket_preset)) % 10000}"
+
         selected_ingredients = st.multiselect(
             "Select or Add Pantry Items:",
-            options=[
-                "Chicken breast", "Salmon fillet", "Ground beef", "Tofu", "Eggs",
-                "Broccoli", "Spinach", "Bell pepper", "Zucchini", "Carrots", "Avocado",
-                "Quinoa", "Brown rice", "Rolled oats", "Pasta", "Sweet potato",
-                "Garlic", "Onion", "Ginger", "Lemon", "Olive oil", "Soy sauce", "Parmesan"
-            ],
-            default=default_items,
-            key="pantry_multiselect"
+            options=PANTRY_OPTIONS,
+            default=safe_defaults,
+            key=multiselect_key
         )
 
         custom_text_items = st.text_input(
