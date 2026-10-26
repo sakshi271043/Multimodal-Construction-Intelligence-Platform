@@ -1,6 +1,6 @@
 """
-Unified AI Multi-Provider Service for Food Verse AI.
-Supports Google Gemini (Multimodal Vision + Reasoning), Groq, and Standalone Showcase / Demo fallback.
+Unified AI Multi-Provider Service for Multimodal Construction Intelligence Platform.
+Supports Google Gemini (Multimodal Vision + Reasoning) with robust demonstration mode fallback.
 """
 
 import json
@@ -9,17 +9,17 @@ import os
 from typing import Any, Dict, List, Optional
 from PIL import Image
 
-from utils.helpers import image_to_base64, parse_json_from_response
+from utils.helpers import parse_json_from_response
 from modules.demo_data import (
-    DEMO_NUTRITION_ITEMS,
-    DEMO_FRESHNESS_ITEMS,
-    DEMO_HYGIENE_INSPECTIONS,
-    DEMO_RECIPES
+    DEMO_PPE_SITES,
+    DEMO_CRACKS,
+    DEMO_WEATHER_PROTOCOLS,
+    DEMO_CHAT_KNOWLEDGE
 )
 
-logger = logging.getLogger("FoodVerseAI")
+logger = logging.getLogger("ConstructionAI")
 
-class FoodVerseAIService:
+class ConstructionAIService:
     def __init__(
         self,
         provider: str = "demo",
@@ -27,507 +27,286 @@ class FoodVerseAIService:
         model_name: Optional[str] = None
     ):
         """
-        provider: 'gemini', 'groq', or 'demo'
-        api_key: API key string if using real LLM
-        model_name: Optional specific model name
+        provider: 'gemini' or 'demo'
+        api_key: Google Gemini API key
+        model_name: specific Gemini model (e.g. 'gemini-2.5-flash', 'gemini-1.5-flash')
         """
-        self.provider = provider.lower() if provider else "demo"
+        self.provider = (provider or "demo").lower()
         self.api_key = (api_key or "").strip()
-        self.model_name = model_name
+        self.model_name = model_name or "gemini-2.5-flash"
         self.client = None
+        self._gemini_sdk = None
         self._init_client()
 
     def _init_client(self):
-        """Initializes the active provider client if credentials exist."""
+        """Initializes Gemini API client if credentials are provided."""
         if not self.api_key or self.provider == "demo":
             self.provider = "demo"
             return
 
         try:
-            if self.provider == "gemini":
-                # Check for google-genai or google-generativeai
-                try:
-                    from google import genai
-                    self.client = genai.Client(api_key=self.api_key)
-                    self._gemini_sdk = "genai"
-                except Exception:
-                    import google.generativeai as legacy_genai
-                    legacy_genai.configure(api_key=self.api_key)
-                    self.client = legacy_genai
-                    self._gemini_sdk = "legacy"
-            elif self.provider == "groq":
-                from groq import Groq
-                self.client = Groq(api_key=self.api_key)
+            # First attempt: modern google.genai Client
+            try:
+                from google import genai
+                self.client = genai.Client(api_key=self.api_key)
+                self._gemini_sdk = "genai"
+                logger.info("Initialized modern google.genai client")
+            except Exception as e1:
+                # Second attempt: legacy google.generativeai
+                import google.generativeai as legacy_genai
+                legacy_genai.configure(api_key=self.api_key)
+                self.client = legacy_genai
+                self._gemini_sdk = "legacy"
+                logger.info(f"Initialized legacy google.generativeai client: {e1}")
         except Exception as e:
-            logger.warning(f"Failed to initialize {self.provider} client: {e}. Falling back to Demo mode.")
+            logger.warning(f"Failed to initialize Gemini client ({e}). Falling back to Demo mode.")
             self.provider = "demo"
 
     # ==========================================
-    # TAB 1: FOOD RECOGNITION & NUTRITION AUDIT
+    # TAB 1: SITE SAFETY & PPE AUDIT (EPIC 2)
     # ==========================================
-    def analyze_nutrition(
+    def audit_site_safety_ppe(
         self,
         image_input: Any,
-        dish_name_hint: Optional[str] = None,
-        portion_hint: Optional[str] = None
+        site_context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Multimodal food recognition, nutritional breakdown, macro calculation,
-        and composite Health Score (1-100).
+        Multimodal prompt analyzing worker PPE compliance (helmets, high-vis vests,
+        steel-toe boots, safety harnesses) under OSHA 1926 and IS 456 standards.
+        Returns structured JSON with safety_score, overall_status, ppe_detection, and site_hazards.
         """
         if self.provider == "demo" or not self.client:
-            # Match closest demo item or return default
-            if dish_name_hint and dish_name_hint in DEMO_NUTRITION_ITEMS:
-                return DEMO_NUTRITION_ITEMS[dish_name_hint]
-            for key, val in DEMO_NUTRITION_ITEMS.items():
-                if dish_name_hint and (dish_name_hint.lower() in key.lower() or key.lower() in dish_name_hint.lower()):
+            # Match preset if available or return primary demo
+            if site_context and site_context in DEMO_PPE_SITES:
+                return DEMO_PPE_SITES[site_context]
+            for key, val in DEMO_PPE_SITES.items():
+                if site_context and (site_context.lower() in key.lower() or key.lower() in site_context.lower()):
                     return val
-            # Default to Mediterranean bowl
-            return DEMO_NUTRITION_ITEMS["Mediterranean Salmon & Quinoa Bowl"]
+            return DEMO_PPE_SITES["Active High-Rise Slab Rebar & Concreting"]
 
         system_prompt = (
-            "You are Food Verse AI, an elite Food Scientist and Registered Dietitian. "
-            "Analyze the meal or dish in the image and provide a rigorous nutritional audit. "
-            "Respond ONLY with a valid JSON object matching this exact schema:\n"
+            "You are a Senior Construction Site Safety Director and Certified OSHA 1926 / IS 456 Inspector. "
+            "Analyze the construction site image in extreme technical detail for worker PPE compliance and physical hazards.\n\n"
+            "Key PPE items to inspect:\n"
+            "1. Helmets / Hard Hats (OSHA 1926.100 & IS 2925)\n"
+            "2. High-Visibility Safety Vests (OSHA 1926.200 & IS 15809)\n"
+            "3. Steel-Toe Safety Boots / Footwear (OSHA 1926.96 & IS 15298)\n"
+            "4. Safety Harnesses & Fall Arrest Systems (mandatory near edges > 1.8m, OSHA 1926.502 & IS 3521)\n"
+            "5. Eye & Face Protection (safety goggles, shields)\n"
+            "6. Heavy-Duty Work Gloves\n\n"
+            "You MUST respond ONLY with a valid JSON object matching this exact schema:\n"
             "{\n"
-            '  "dish_name": "Accurate culinary name of dish",\n'
-            '  "cuisine": "Culinary tradition or origin",\n'
-            '  "portion_size": "Estimated portion weight in grams and household measure",\n'
-            '  "calories_kcal": 550,\n'
-            '  "protein_g": 35.0,\n'
-            '  "carbohydrates_g": 45.0,\n'
-            '  "fats_g": 20.0,\n'
-            '  "fiber_g": 8.5,\n'
-            '  "sugar_g": 4.0,\n'
-            '  "sodium_mg": 520,\n'
-            '  "health_score": 92,\n'
-            '  "dietary_flags": ["High Protein", "Gluten-Free Friendly"],\n'
-            '  "allergen_alerts": ["Dairy", "Nuts"],\n'
-            '  "ingredients": [\n'
-            '     {"name": "Ingredient Name", "weight_g": 150, "calories": 220}\n'
+            '  "safety_score": 75,\n'
+            '  "overall_status": "Compliant" | "Needs Attention" | "Non-Compliant (Stop-Work Risk)",\n'
+            '  "workers_detected": 4,\n'
+            '  "ppe_detection": [\n'
+            '    {\n'
+            '      "item": "Safety Helmets (Hard Hats)",\n'
+            '      "status": "Detected" | "Partial" | "Missing" | "N/A",\n'
+            '      "compliance_rate": "80% (4/5 Workers)",\n'
+            '      "code_reference": "OSHA 1926.100 & IS 2925",\n'
+            '      "notes": "Technical observations"\n'
+            '    }\n'
             '  ],\n'
-            '  "dietitian_review": "Comprehensive scientific assessment of macronutrient balance and micronutrient bio-availability.",\n'
-            '  "optimization_tip": "Specific actionable suggestion to enhance nutrition density."\n'
-            "}\n"
-            "Health score must be an integer between 1 and 100 based on whole food composition, fiber, protein vs ultra-processed saturated fats and added sugars."
-        )
-
-        user_content = f"Analyze this meal. Optional dish context: {dish_name_hint or 'None'}. Portion hint: {portion_hint or 'Standard single serving'}."
-
-        try:
-            return self._call_multimodal_vision(image_input, system_prompt, user_content)
-        except Exception as e:
-            logger.error(f"Error calling AI vision for nutrition: {e}")
-            fallback = DEMO_NUTRITION_ITEMS.get(dish_name_hint, DEMO_NUTRITION_ITEMS["Mediterranean Salmon & Quinoa Bowl"]).copy()
-            fallback["dietitian_review"] += f" (Note: Simulated audit triggered due to API error: {str(e)[:70]}...)"
-            return fallback
-
-    # ==========================================
-    # TAB 2: FOOD FRESHNESS & SPOILAGE DIAGNOSTIC
-    # ==========================================
-    def analyze_freshness(
-        self,
-        image_input: Any,
-        item_name_hint: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Multimodal spoilage diagnostic evaluating surface texture, discoloration,
-        wrinkling, and mold. Classifies freshness: [Fresh | Moderately Fresh | Spoiled].
-        """
-        if self.provider == "demo" or not self.client:
-            if item_name_hint and item_name_hint in DEMO_FRESHNESS_ITEMS:
-                return DEMO_FRESHNESS_ITEMS[item_name_hint]
-            for key, val in DEMO_FRESHNESS_ITEMS.items():
-                if item_name_hint and (item_name_hint.lower() in key.lower() or key.lower() in item_name_hint.lower()):
-                    return val
-            return DEMO_FRESHNESS_ITEMS["Fresh Hass Avocado"]
-
-        system_prompt = (
-            "You are Food Verse AI, an expert post-harvest food scientist and microbiologist. "
-            "Inspect the perishable food item in the image for spoilage, cellular breakdown, and pathogens. "
-            "Respond ONLY with a valid JSON object matching this schema:\n"
-            "{\n"
-            '  "item_name": "Scientific/Common name of the food item",\n'
-            '  "category": "Produce / Meat / Dairy / Bakery / Poultry",\n'
-            '  "freshness_stage": "Fresh" OR "Moderately Fresh" OR "Spoiled",\n'
-            '  "freshness_index": 85,\n'
-            '  "surface_evaluation": {\n'
-            '     "texture": "Evaluation of firmness, turgor pressure, softening, or slime",\n'
-            '     "discoloration": "Evaluation of browning, oxidation, or pigment loss",\n'
-            '     "wrinkling": "Evaluation of epidermal moisture loss and shrinkage",\n'
-            '     "mold_status": "Evaluation of fungal mycelium, sporulation, or bacterial colonies"\n'
-            '  },\n'
-            '  "food_safety_advice": "Explicit safety status: Safe to consume | Consume within 24 hours | Discard immediately",\n'
-            '  "shelf_life_remaining": "Estimated remaining consumable shelf life",\n'
-            '  "storage_tips": ["Preservation storage tip 1", "Preservation storage tip 2"],\n'
-            '  "salvage_tips": "Zero-waste culinary salvage tips if moderately fresh, or disposal advice if spoiled"\n'
-            "}\n"
-            "Freshness index is 0 (heavily spoiled) to 100 (freshly harvested/butchered)."
-        )
-
-        user_content = f"Evaluate this perishable food item. User item hint: {item_name_hint or 'Raw perishable item'}."
-
-        try:
-            return self._call_multimodal_vision(image_input, system_prompt, user_content)
-        except Exception as e:
-            logger.error(f"Error calling AI vision for freshness: {e}")
-            fallback = DEMO_FRESHNESS_ITEMS.get(item_name_hint, DEMO_FRESHNESS_ITEMS["Fresh Hass Avocado"]).copy()
-            fallback["food_safety_advice"] += f" (Simulated fallback due to API status: {str(e)[:60]})"
-            return fallback
-
-    # ==========================================
-    # TAB 3: KITCHEN HYGIENE & FOOD SAFETY AUDIT
-    # ==========================================
-    def audit_kitchen_hygiene(
-        self,
-        image_input: Any,
-        facility_type: Optional[str] = "Commercial Kitchen"
-    ) -> Dict[str, Any]:
-        """
-        Visual inspection for commercial/domestic kitchens:
-        Hairnet compliance, glove usage, sanitization state, cross-contamination,
-        and compliance score (%) with itemized violation logs.
-        """
-        if self.provider == "demo" or not self.client:
-            if "Critical" in (facility_type or "") or "Violation" in (facility_type or ""):
-                return DEMO_HYGIENE_INSPECTIONS["Commercial Prep Kitchen - Critical Violation"]
-            return DEMO_HYGIENE_INSPECTIONS["Commercial Prep Kitchen - Critical Violation"]
-
-        system_prompt = (
-            "You are Food Verse AI, an accredited Public Health Food Safety Auditor and HACCP Inspector. "
-            "Audit the commercial kitchen or food prep environment shown in the image. "
-            "Inspect for: 1) Chef hats/hairnets and beard restraints, 2) Glove usage and hand hygiene PPE, "
-            "3) Surface cleanliness and sanitization, 4) Cross-contamination hazards (e.g. raw poultry/meat touching produce). "
-            "Respond ONLY with a valid JSON object matching this schema:\n"
-            "{\n"
-            '  "scene_name": "Description of inspected kitchen station",\n'
-            '  "facility_type": "Commercial Kitchen / Cloud Kitchen / Food Truck",\n'
-            '  "compliance_score": 82,\n'
-            '  "compliance_grade": "Grade A" OR "Grade B" OR "Grade C / Fail",\n'
-            '  "detected_indicators": {\n'
-            '     "hair_restraint_compliance": "Compliant / Violation details",\n'
-            '     "glove_ppe_compliance": "Compliant / Violation details",\n'
-            '     "surface_sanitization": "Clean / Debris / Stained details",\n'
-            '     "cross_contamination_hazard": "Identification of any cross-contact risk"\n'
-            '  },\n'
-            '  "violations": [\n'
-            '     {\n'
-            '       "severity": "Critical" OR "Major" OR "Minor",\n'
-            '       "hazard_title": "Short title of violation",\n'
-            '       "observation": "Specific visual evidence in the image",\n'
-            '       "haccp_code": "FDA Food Code or HACCP standard reference",\n'
-            '       "corrective_action": "Immediate corrective protocol"\n'
-            '     }\n'
+            '  "site_hazards": [\n'
+            '    {\n'
+            '      "hazard_id": "HAZ-001",\n'
+            '      "hazard_type": "Unprotected Slab Edge Fall Hazard",\n'
+            '      "severity": "Low" | "Medium" | "High" | "Critical",\n'
+            '      "location": "Deck perimeter",\n'
+            '      "regulatory_code": "OSHA 1926.501(b)(1)",\n'
+            '      "corrective_remedy": "Specific engineering remediation action"\n'
+            '    }\n'
             '  ],\n'
-            '  "auditor_summary": "Comprehensive regulatory summary and passing/failing recommendation."\n'
-            "}\n"
-            "Compliance score is an integer between 0 and 100. Deduct 25+ points for Critical hazards like raw meat cross-contamination."
-        )
-
-        user_content = f"Perform a HACCP hygiene inspection on this kitchen. Environment type: {facility_type}."
-
-        try:
-            return self._call_multimodal_vision(image_input, system_prompt, user_content)
-        except Exception as e:
-            logger.error(f"Error calling AI vision for hygiene: {e}")
-            return DEMO_HYGIENE_INSPECTIONS["Commercial Prep Kitchen - Critical Violation"]
-
-    # ==========================================
-    # TAB 4: SMART KITCHEN RECIPE ASSISTANT
-    # ==========================================
-    def generate_recipes(
-        self,
-        pantry_items: List[str],
-        dietary_preference: Optional[str] = "Any",
-        meal_type: Optional[str] = "Dinner",
-        max_time_mins: int = 40,
-        skill_level: str = "Intermediate"
-    ) -> List[Dict[str, Any]]:
-        """
-        Generates creative, nutritious recipes based on user pantry inventory.
-        """
-        if self.provider == "demo" or not self.client:
-            return DEMO_RECIPES
-
-        pantry_str = ", ".join(pantry_items) if pantry_items else "Chicken breast, broccoli, olive oil, garlic"
-        system_prompt = (
-            "You are Food Verse AI, an executive master chef and nutrition scientist. "
-            "Create 2 distinct, highly creative, appetizing recipes utilizing the user's available pantry ingredients. "
-            "Respond ONLY with a valid JSON array of recipe objects matching this schema:\n"
-            "[\n"
-            "  {\n"
-            '    "title": "Creative Dish Title",\n'
-            '    "cuisine": "Culinary Style",\n'
-            '    "prep_time": "15 mins",\n'
-            '    "cook_time": "20 mins",\n'
-            '    "total_time": "35 mins",\n'
-            '    "servings": 2,\n'
-            '    "difficulty": "Easy" OR "Intermediate" OR "Master Chef",\n'
-            '    "calories_per_serving": 450,\n'
-            '    "macros": {"protein": "38g", "carbs": "40g", "fat": "15g", "fiber": "6g"},\n'
-            '    "pantry_used": ["ingredient1", "ingredient2"],\n'
-            '    "substitutions": ["Ingredient A -> Alternative B if missing"],\n'
-            '    "instructions": ["Step 1 detailed action", "Step 2 detailed action"],\n'
-            '    "chef_pro_tip": "Insider culinary technique",\n'
-            '    "zero_waste_tip": "How to utilize peels, scraps, or leftovers"\n'
-            "  }\n"
-            "]"
-        )
-
-        user_content = (
-            f"Available Pantry Inventory: {pantry_str}.\n"
-            f"Dietary Constraint: {dietary_preference}.\n"
-            f"Meal Type: {meal_type}.\n"
-            f"Max Total Cooking Time: {max_time_mins} minutes.\n"
-            f"Chef Skill Level: {skill_level}."
-        )
-
-        try:
-            res_text = self._call_text_llm(system_prompt, user_content)
-            parsed = parse_json_from_response(res_text)
-            if isinstance(parsed, list) and len(parsed) > 0:
-                return parsed
-            elif isinstance(parsed, dict) and "recipes" in parsed:
-                return parsed["recipes"]
-            return DEMO_RECIPES
-        except Exception as e:
-            logger.error(f"Recipe generation error: {e}")
-            return DEMO_RECIPES
-
-    # ==========================================
-    # TAB 5: PERSONALIZED MEAL PLANNER
-    # ==========================================
-    def generate_meal_plan(
-        self,
-        profile: Dict[str, Any],
-        bmr: float,
-        tdee: float,
-        target_kcal: int,
-        macro_targets: Dict[str, int]
-    ) -> Dict[str, Any]:
-        """
-        Generates an adaptive 7-day meal schedule + automated categorized grocery list.
-        """
-        if self.provider == "demo" or not self.client:
-            return self._generate_mock_meal_plan(profile, target_kcal, macro_targets)
-
-        system_prompt = (
-            "You are Food Verse AI, an elite Clinical Dietitian and Sports Nutritionist. "
-            "Formulate an adaptive 7-day meal schedule (Monday through Sunday) with breakfast, lunch, dinner, "
-            "and snack, precisely meeting the user's daily caloric target and dietary goals. "
-            "Also generate a categorized grocery shopping list for the entire week. "
-            "Respond ONLY with a valid JSON object matching this schema:\n"
-            "{\n"
-            '  "daily_target_calories": 2100,\n'
-            '  "dietary_approach": "Description of dietary regime",\n'
-            '  "daily_schedule": {\n'
-            '     "Monday": {\n'
-            '        "calories": 2080,\n'
-            '        "breakfast": "Oatmeal with berries & protein whey (450 kcal)",\n'
-            '        "lunch": "Grilled chicken quinoa bowl with avocado (650 kcal)",\n'
-            '        "dinner": "Baked salmon with roasted asparagus & sweet potato (700 kcal)",\n'
-            '        "snack": "Greek yogurt with crushed almonds (280 kcal)"\n'
-            '     }\n'
-            '     ... include Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday ...\n'
-            '  },\n'
-            '  "grocery_list": {\n'
-            '     "Fresh Produce": ["Baby spinach (500g)", "Avocados (4 units)", ...],\n'
-            '     "Proteins & Fish": ["Wild salmon fillets (4x150g)", "Chicken breasts (1kg)", ...],\n'
-            '     "Grains & Bakery": ["Organic quinoa (500g)", "Rolled oats (1kg)", ...],\n'
-            '     "Dairy & Refrigerated": ["Non-fat Greek yogurt (1kg)", "Eggs (1 dozen)", ...],\n'
-            '     "Pantry & Spices": ["Extra virgin olive oil", "Raw almonds", "Sea salt"]\n'
-            '  },\n'
-            '  "dietitian_coaching_notes": "Key behavioral guidance and meal prep batching strategies."\n'
+            '  "executive_summary": "Comprehensive regulatory overview and actionable guidance."\n'
             "}"
         )
 
-        user_content = (
-            f"User Profile: Age {profile.get('age')}, Gender {profile.get('gender')}, "
-            f"Weight {profile.get('weight_kg')} kg, Activity {profile.get('activity_level')}, "
-            f"Diet: {profile.get('dietary_constraint')}, Goal: {profile.get('fitness_goal')}.\n"
-            f"Calculated BMR: {int(bmr)} kcal, TDEE: {int(tdee)} kcal.\n"
-            f"Daily Caloric Target: {target_kcal} kcal.\n"
-            f"Daily Target Macros: Protein {macro_targets['protein']}g, Carbs {macro_targets['carbs']}g, Fats {macro_targets['fats']}g."
+        user_prompt = f"Analyze this construction site photo. Context notes: {site_context or 'Active construction zone'}."
+
+        try:
+            # Handle PIL image
+            pil_img = self._load_pil_image(image_input)
+            
+            if self._gemini_sdk == "genai":
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[pil_img, system_prompt + "\n\n" + user_prompt]
+                )
+                raw_text = response.text or ""
+            else:
+                model = self.client.GenerativeModel(self.model_name)
+                response = model.generate_content([system_prompt + "\n\n" + user_prompt, pil_img])
+                raw_text = response.text or ""
+
+            parsed = parse_json_from_response(raw_text)
+            if "safety_score" in parsed and "ppe_detection" in parsed:
+                return parsed
+            else:
+                logger.warning(f"Gemini output lacked required keys, returning demo fallback: {raw_text[:200]}")
+                return DEMO_PPE_SITES["Active High-Rise Slab Rebar & Concreting"]
+        except Exception as e:
+            logger.error(f"Error calling Gemini for PPE audit: {e}. Falling back to demo data.")
+            return DEMO_PPE_SITES["Active High-Rise Slab Rebar & Concreting"]
+
+    # ==========================================
+    # TAB 2: CRACK DIAGNOSTICS & INTEGRITY (EPIC 2)
+    # ==========================================
+    def diagnose_crack_structural(
+        self,
+        image_input: Any,
+        element_context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Multimodal prompt classifying defect type (Hairline, Settlement, Structural Shear,
+        Thermal Expansion, Spalling) with estimated crack width (mm), root causes,
+        recommended engineering repairs (epoxy injection, structural re-grouting), and urgency.
+        """
+        if self.provider == "demo" or not self.client:
+            if element_context and element_context in DEMO_CRACKS:
+                return DEMO_CRACKS[element_context]
+            for key, val in DEMO_CRACKS.items():
+                if element_context and (element_context.lower() in key.lower() or key.lower() in element_context.lower()):
+                    return val
+            return DEMO_CRACKS["Structural Shear Crack at Beam-Column Joint"]
+
+        system_prompt = (
+            "You are an expert Structural Forensic Engineer and Civil Consultant specializing in concrete pathology, "
+            "IS 456:2000, IS 13920, and ACI 224 concrete crack repair standards.\n\n"
+            "Analyze the defect on the concrete / masonry surface in the image.\n"
+            "Classify the defect type into one of:\n"
+            "['Structural Shear Crack', 'Settlement Crack', 'Hairline Crack', 'Thermal Expansion Joint Failure', 'Spalling & Carbonation Corrosion', 'Honeycombing & Void']\n\n"
+            "You MUST respond ONLY with a valid JSON object matching this schema:\n"
+            "{\n"
+            '  "title": "Descriptive defect title",\n'
+            '  "element": "e.g. RCC Beam-Column Junction, Slab soffit, Masonry Infill",\n'
+            '  "defect_type": "Structural Shear Crack",\n'
+            '  "estimated_width_mm": 1.5,\n'
+            '  "is456_exposure_limit_mm": 0.20,\n'
+            '  "urgency": "Low (Aesthetic / Non-Critical)" | "Moderate (Monitor & Remediate)" | "Urgent (High Structural Risk)" | "Immediate Evacuation / Critical",\n'
+            '  "root_causes": "Detailed civil engineering analysis of mechanisms (shear overload, settlement, thermal, alkali-silica, corrosion)",\n'
+            '  "engineering_repairs": [\n'
+            '    "Step 1: Specific engineering action (e.g. low-viscosity epoxy pressure injection < 200 cps)",\n'
+            '    "Step 2: Structural re-grouting / CFRP wrap / surface preparation"\n'
+            '  ],\n'
+            '  "standards_reference": "IS 456:2000 Clause 35.3.2, IS 13920:2016, ACI 224.1R",\n'
+            '  "remediation_urgency_days": "Immediate (Within 48 Hours)"\n'
+            "}"
+        )
+
+        user_prompt = f"Diagnose this concrete/masonry defect. Location/element context: {element_context or 'Structural Element'}."
+
+        try:
+            pil_img = self._load_pil_image(image_input)
+            
+            if self._gemini_sdk == "genai":
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[pil_img, system_prompt + "\n\n" + user_prompt]
+                )
+                raw_text = response.text or ""
+            else:
+                model = self.client.GenerativeModel(self.model_name)
+                response = model.generate_content([system_prompt + "\n\n" + user_prompt, pil_img])
+                raw_text = response.text or ""
+
+            parsed = parse_json_from_response(raw_text)
+            if "defect_type" in parsed and "engineering_repairs" in parsed:
+                return parsed
+            else:
+                logger.warning(f"Gemini output lacked required keys, returning demo fallback: {raw_text[:200]}")
+                return DEMO_CRACKS["Structural Shear Crack at Beam-Column Joint"]
+        except Exception as e:
+            logger.error(f"Error calling Gemini for crack diagnosis: {e}. Falling back to demo data.")
+            return DEMO_CRACKS["Structural Shear Crack at Beam-Column Joint"]
+
+    # ==========================================
+    # TAB 4: INTERACTIVE SITE CHATBOT (EPIC 5)
+    # ==========================================
+    def chat_construction_assistant(
+        self,
+        messages: List[Dict[str, str]],
+        weather_context: Optional[str] = None
+    ) -> str:
+        """
+        Interactive multi-turn construction engineering assistant chatbot.
+        Maintains persona of a Senior Chartered Structural Engineer & Site Safety Director.
+        """
+        # Standalone demo mode fallback
+        if self.provider == "demo" or not self.client:
+            latest_msg = messages[-1]["content"].lower() if messages else ""
+            if "is 456" in latest_msg or "code" in latest_msg or "crack width" in latest_msg:
+                return DEMO_CHAT_KNOWLEDGE["is456"]
+            elif "wind" in latest_msg or "crane" in latest_msg or "tower" in latest_msg:
+                return DEMO_CHAT_KNOWLEDGE["osha_wind"]
+            elif "epoxy" in latest_msg or "grout" in latest_msg or "repair" in latest_msg:
+                return DEMO_CHAT_KNOWLEDGE["crack_repair"]
+            elif "cement" in latest_msg or "mix" in latest_msg or "steel" in latest_msg or "m25" in latest_msg:
+                return DEMO_CHAT_KNOWLEDGE["mix_design"]
+            else:
+                return (
+                    f"**Site Engineering Field Directive**\n\n"
+                    f"Under the current active site weather condition (**{weather_context or 'Standard'}**), "
+                    f"ensure strict compliance with IS 456:2000 and OSHA 1926 standards. "
+                    f"For structural crack assessments, verify width against Table 2 exposure limits (0.3mm mild, 0.2mm moderate). "
+                    f"Always verify formwork propping, bar splicing lengths (minimum 50d in tension), and continuous wet curing for 14 days."
+                )
+
+        system_instruction = (
+            "You are an authoritative Senior Structural & Civil Engineer and Construction EHS Director. "
+            "You possess deep expertise in IS 456:2000, IS 1893:2016 (Earthquake Resistance), IS 875:2015 (Wind & Live Loads), "
+            "OSHA 1926 construction safety regulations, and CPWD civil engineering benchmarks.\n\n"
+            f"Current Site Environmental Context: {weather_context or 'Normal / Clear'}.\n\n"
+            "Guidelines:\n"
+            "- Provide practical, high-precision engineering advice with exact code clauses, formula references, and material specs.\n"
+            "- Highlight safety red flags immediately.\n"
+            "- Format responses cleanly with bold headings, bullet points, and actionable checklists."
         )
 
         try:
-            res_text = self._call_text_llm(system_prompt, user_content)
-            parsed = parse_json_from_response(res_text)
-            if isinstance(parsed, dict) and "daily_schedule" in parsed:
-                return parsed
-            return self._generate_mock_meal_plan(profile, target_kcal, macro_targets)
-        except Exception as e:
-            logger.error(f"Meal plan generation error: {e}")
-            return self._generate_mock_meal_plan(profile, target_kcal, macro_targets)
+            conversation_history = ""
+            for m in messages:
+                role = "User" if m["role"] == "user" else "Assistant"
+                conversation_history += f"{role}: {m['content']}\n"
 
-    def _generate_mock_meal_plan(
-        self,
-        profile: Dict[str, Any],
-        target_kcal: int,
-        macro_targets: Dict[str, int]
-    ) -> Dict[str, Any]:
-        """High quality mock meal plan generator adhering to target kcal."""
-        diet = profile.get("dietary_constraint", "Balanced")
-        goal = profile.get("fitness_goal", "Lean Recomposition")
+            prompt = f"{system_instruction}\n\nConversation History:\n{conversation_history}\nAssistant:"
 
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        sample_meals = [
-            ("Protein Berry Oatmeal Bowl with Chia Seeds", "Grilled Herb Chicken Breast with Quinoa & Steamed Broccoli", "Pan-Seared Wild Salmon with Roasted Sweet Potatoes & Asparagus", "Greek Yogurt with Crushed Walnuts & Honey"),
-            ("Avocado & Scrambled Egg Sourdough Toast", "Mediterranean Tuna Salad with Olive Oil & Garbanzo Beans", "Lean Turkey Bolognese over High-Protein Lentil Pasta", "Whey Protein Shake with Green Apple"),
-            ("Spinach, Banana & Plant Protein Super-Smoothie", "Warm Grass-Fed Beef & Brown Basmati Rice Bowl", "Baked Lemon Cod with Herb Roasted Cauliflower & Baby Potatoes", "Cottage Cheese with Sliced Cucumber & Pumpkin Seeds"),
-            ("Fluffy Egg White & Vegetable Omelet with Avocado", "Tofu & Edamame Garlic Ginger Stir-Fry over Brown Rice", "Grilled Marinated Chicken Breast with Baked Yam & Zucchini", "Dark Chocolate Rice Cake with Almond Butter"),
-            ("Greek Yogurt Parfait with Mixed Berries & Hemp Seeds", "Wild Salmon Poke Bowl with Seaweed, Avocado & Brown Rice", "Herb-Crusted Flank Steak with Chimichurri & Roasted Carrots", "Hard-Boiled Pasture Eggs with Carrot Sticks"),
-            ("Whole Grain Blueberry Protein Waffles with Pure Maple", "Grilled Turkey Burger on Brioche with Mixed Green Salad", "Pan-Seared Sea Bass with Lemon Garlic Quinoa & Green Beans", "Mixed Raw Nuts (Almonds, Cashews, Walnuts)"),
-            ("Poached Eggs over Wilted Spinach & Whole Wheat Toast", "Hearty Moroccan Chickpea & Vegetable Tagine Stew", "Slow-Roasted Herb Chicken with Sautéed Kale & Baked Red Potatoes", "Low-Fat Kefir with Cinnamon & Chia Seeds")
-        ]
-
-        daily_schedule = {}
-        for idx, day in enumerate(days):
-            b, l, d, s = sample_meals[idx]
-            # Calorie splits approx 25% B, 35% L, 30% D, 10% S
-            b_c = int(target_kcal * 0.25)
-            l_c = int(target_kcal * 0.35)
-            d_c = int(target_kcal * 0.30)
-            s_c = target_kcal - (b_c + l_c + d_c)
-
-            daily_schedule[day] = {
-                "calories": target_kcal,
-                "breakfast": f"{b} (~{b_c} kcal)",
-                "lunch": f"{l} (~{l_c} kcal)",
-                "dinner": f"{d} (~{d_c} kcal)",
-                "snack": f"{s} (~{s_c} kcal)"
-            }
-
-        return {
-            "daily_target_calories": target_kcal,
-            "dietary_approach": f"{diet} Diet optimized for {goal}",
-            "daily_schedule": daily_schedule,
-            "grocery_list": {
-                "Fresh Produce": [
-                    "Baby spinach & organic mixed greens (2 large boxes)",
-                    "Fresh avocados (5-6 ripe units)",
-                    "Broccoli florets (2 heads) & asparagus bunch",
-                    "Sweet potatoes / yams (1.5 kg)",
-                    "Fresh lemons, garlic bulb, fresh ginger root",
-                    "Organic blueberries & strawberries (3 clamshells)"
-                ],
-                "Proteins & Fish": [
-                    "Wild Alaskan salmon fillets (4x160g)",
-                    "Boneless skinless chicken breasts (1.5 kg)",
-                    "Lean ground turkey or flank steak (600g)",
-                    "Extra-firm organic tofu or lentils (2 packs)",
-                    "Pasture-raised eggs (2 dozen)"
-                ],
-                "Grains & Bakery": [
-                    "Tri-color organic quinoa (500g)",
-                    "Brown basmati or jasmine rice (1kg)",
-                    "Rolled whole-grain oats (1kg)",
-                    "Fermented artisanal sourdough bread (1 loaf)"
-                ],
-                "Dairy & Plant-Based": [
-                    "0% Greek strained yogurt (1kg tub)",
-                    "Low-fat cottage cheese or unsweetened almond milk",
-                    "Aged Parmesan or feta block (200g)"
-                ],
-                "Pantry & Spices": [
-                    "Cold-pressed Extra Virgin Olive Oil (500ml)",
-                    "Raw unsalted almonds & walnuts (300g)",
-                    "Organic chia seeds & hemp hearts",
-                    "Low-sodium tamari soy sauce & dried oregano"
-                ]
-            },
-            "dietitian_coaching_notes": (
-                "Batch cook your quinoa and brown rice on Sunday evening. Pre-grill chicken breasts and store in "
-                "airtight glass meal prep containers for zero friction lunches during busy weekdays."
-            )
-        }
-
-    # ==========================================
-    # INTERNAL MULTIMODAL & TEXT RUNNERS
-    # ==========================================
-    def _call_multimodal_vision(self, image_input: Any, system_prompt: str, user_content: str) -> Dict[str, Any]:
-        """Dispatches multimodal vision request to Gemini or Groq."""
-        if self.provider == "gemini":
-            return self._call_gemini_vision(image_input, system_prompt, user_content)
-        elif self.provider == "groq":
-            return self._call_groq_vision(image_input, system_prompt, user_content)
-        raise ValueError(f"Unsupported provider: {self.provider}")
-
-    def _call_gemini_vision(self, image_input: Any, system_prompt: str, user_content: str) -> Dict[str, Any]:
-        """Calls Gemini Vision API."""
-        # Convert image to PIL
-        pil_img = None
-        if isinstance(image_input, Image.Image):
-            pil_img = image_input
-        elif hasattr(image_input, "getvalue"):
-            pil_img = Image.open(image_input)
-        elif isinstance(image_input, (bytes, bytearray)):
-            pil_img = Image.open(io.BytesIO(image_input))
-
-        model_name = self.model_name or "gemini-2.5-flash"
-
-        if getattr(self, "_gemini_sdk", "") == "genai":
-            response = self.client.models.generate_content(
-                model=model_name,
-                contents=[system_prompt, user_content, pil_img]
-            )
-            raw_text = response.text
-        else:
-            # Legacy SDK
-            model = self.client.GenerativeModel(model_name)
-            response = model.generate_content([system_prompt, user_content, pil_img])
-            raw_text = response.text
-
-        return parse_json_from_response(raw_text)
-
-    def _call_groq_vision(self, image_input: Any, system_prompt: str, user_content: str) -> Dict[str, Any]:
-        """Calls Groq Vision API using base64 image encoding."""
-        b64 = image_to_base64(image_input)
-        model_name = self.model_name or "llama-3.2-11b-vision-preview"
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": user_content},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
-                    }
-                ]
-            }
-        ]
-        completion = self.client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            response_format={"type": "json_object"} if "llama-3.3" in model_name else None
-        )
-        raw_text = completion.choices[0].message.content
-        return parse_json_from_response(raw_text)
-
-    def _call_text_llm(self, system_prompt: str, user_content: str) -> str:
-        """Dispatches text-only prompts to Gemini or Groq."""
-        if self.provider == "gemini":
-            model_name = self.model_name or "gemini-2.5-flash"
-            if getattr(self, "_gemini_sdk", "") == "genai":
+            if self._gemini_sdk == "genai":
                 response = self.client.models.generate_content(
-                    model=model_name,
-                    contents=[system_prompt, user_content]
+                    model=self.model_name,
+                    contents=prompt
                 )
-                return response.text
+                return response.text or "No response received."
             else:
-                model = self.client.GenerativeModel(model_name)
-                response = model.generate_content([system_prompt, user_content])
-                return response.text
-        elif self.provider == "groq":
-            model_name = self.model_name or "llama-3.3-70b-versatile"
-            completion = self.client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ]
+                model = self.client.GenerativeModel(self.model_name)
+                response = model.generate_content(prompt)
+                return response.text or "No response received."
+        except Exception as e:
+            logger.error(f"Error in chat assistant: {e}")
+            return (
+                f"**Engine Advisory (Demo Mode Fallback):**\n\n"
+                f"Gemini API returned an operational notice: `{str(e)[:120]}`.\n\n"
+                + DEMO_CHAT_KNOWLEDGE["is456"]
             )
-            return completion.choices[0].message.content
-        return ""
+
+    def _load_pil_image(self, image_input: Any) -> Image.Image:
+        """Helper to ensure input is a valid RGB PIL Image."""
+        if isinstance(image_input, Image.Image):
+            return image_input.convert("RGB")
+        elif hasattr(image_input, "getvalue"):  # Streamlit UploadedFile
+            return Image.open(image_input).convert("RGB")
+        elif isinstance(image_input, (bytes, bytearray)):
+            import io
+            return Image.open(io.BytesIO(image_input)).convert("RGB")
+        elif isinstance(image_input, str):
+            # Check if file path
+            if os.path.exists(image_input):
+                return Image.open(image_input).convert("RGB")
+            # If base64 or URL
+            import requests
+            import io
+            if image_input.startswith("http"):
+                res = requests.get(image_input, timeout=10)
+                return Image.open(io.BytesIO(res.content)).convert("RGB")
+        # Fallback dummy image
+        return Image.new("RGB", (640, 480), color=(100, 110, 120))

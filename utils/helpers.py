@@ -1,49 +1,50 @@
 """
-Helper utilities for Food Verse AI:
-Image conversion, robust JSON parsing, data sanitation, and report generators.
+Helper utilities for Multimodal Construction Intelligence Platform:
+Image processing, robust JSON extraction, Indian Rupee currency formatters, and export generators.
 """
 
 import base64
 import io
 import json
 import re
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 from PIL import Image
 
 def image_to_base64(image_input) -> str:
     """
-    Converts a PIL Image, bytes, or UploadedFile to base64 string.
+    Converts a PIL Image, bytes, or Streamlit UploadedFile to base64 string.
     """
     if isinstance(image_input, Image.Image):
         buffered = io.BytesIO()
-        # Save as PNG or JPEG
-        fmt = image_input.format or "PNG"
-        image_input.save(buffered, format=fmt)
+        fmt = image_input.format or "JPEG"
+        if fmt.upper() not in ["JPEG", "JPG", "PNG", "WEBP"]:
+            fmt = "JPEG"
+        image_input.convert("RGB").save(buffered, format=fmt)
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
     elif hasattr(image_input, "getvalue"):  # Streamlit UploadedFile
         return base64.b64encode(image_input.getvalue()).decode("utf-8")
     elif isinstance(image_input, (bytes, bytearray)):
         return base64.b64encode(image_input).decode("utf-8")
     elif isinstance(image_input, str) and image_input.startswith("data:image"):
-        # Strip header if present
         return image_input.split(",", 1)[-1]
     return str(image_input)
 
 def parse_json_from_response(text: str) -> Dict[str, Any]:
     """
-    Robustly extracts and parses JSON from LLM markdown code blocks or text.
-    Handles ```json blocks, trailing commas, and partial wrappers.
+    Robustly extracts and parses JSON from LLM markdown code blocks or plain text.
+    Handles ```json blocks, trailing commas, and nested wrappers.
     """
     if not text:
         return {}
     
-    # Try direct parse
+    # 1. Direct parse attempt
     try:
         return json.loads(text)
     except Exception:
         pass
 
-    # Try extracting inside ```json ... ```
+    # 2. Extract inside ```json ... ``` or ``` ... ```
     match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
     if match:
         extracted = match.group(1).strip()
@@ -52,7 +53,7 @@ def parse_json_from_response(text: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Try finding outer { ... }
+    # 3. Outer bracket search { ... }
     first_brace = text.find("{")
     last_brace = text.rfind("}")
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
@@ -60,7 +61,7 @@ def parse_json_from_response(text: str) -> Dict[str, Any]:
         try:
             return json.loads(candidate)
         except Exception:
-            # Clean common trailing commas before closing braces
+            # Clean trailing commas
             cleaned = re.sub(r",\s*([\]}])", r"\1", candidate)
             try:
                 return json.loads(cleaned)
@@ -69,40 +70,119 @@ def parse_json_from_response(text: str) -> Dict[str, Any]:
 
     return {"error": "Failed to parse structured JSON", "raw_output": text}
 
-def get_health_score_badge(score: int) -> tuple[str, str, str]:
+def format_inr(amount: float) -> str:
     """
-    Returns (label, color_class, hex_color) for a health score (1-100).
+    Formats currency in Indian Rupee denomination:
+    - >= 1 Crore (10,000,000): '₹ XX.XX Cr'
+    - >= 1 Lakh (100,000): '₹ XX.XX Lakh'
+    - Else: '₹ XX,XXX'
+    """
+    if amount is None or amount < 0:
+        return "₹ 0.00"
+    
+    if amount >= 10_000_000:
+        cr = amount / 10_000_000.0
+        return f"₹ {cr:.2f} Cr"
+    elif amount >= 100_000:
+        lakh = amount / 100_000.0
+        return f"₹ {lakh:.2f} Lakh"
+    else:
+        return f"₹ {amount:,.0f}"
+
+def format_inr_indian_commas(amount: float) -> str:
+    """
+    Formats a number into standard Indian comma grouping:
+    e.g. 12345678 -> 1,23,45,678
+    """
+    s = f"{int(round(amount))}"
+    if len(s) <= 3:
+        return f"₹ {s}"
+    last_three = s[-3:]
+    remaining = s[:-3]
+    parts = []
+    while len(remaining) > 2:
+        parts.insert(0, remaining[-2:])
+        remaining = remaining[:-2]
+    if remaining:
+        parts.insert(0, remaining)
+    parts.append(last_three)
+    return "₹ " + ",".join(parts)
+
+def get_safety_score_badge(score: int) -> Tuple[str, str, str]:
+    """
+    Returns (label, css_badge_class, hex_color) for safety score (0-100).
     """
     if score >= 85:
-        return "Optimal Superfood", "badge-emerald", "#10B981"
-    elif score >= 70:
-        return "Nutrient Dense", "badge-cyan", "#06B6D4"
-    elif score >= 50:
-        return "Moderate Balance", "badge-amber", "#F59E0B"
+        return "Compliant (OSHA / IS 456 Approved)", "badge-emerald", "#10B981"
+    elif score >= 65:
+        return "Needs Attention (Minor Violations)", "badge-amber", "#F59E0B"
     else:
-        return "Indulgent / High Limit", "badge-rose", "#EF4444"
+        return "Non-Compliant (Stop-Work Risk)", "badge-rose", "#EF4444"
 
-def get_freshness_badge(stage: str) -> tuple[str, str, str]:
+def get_severity_badge_class(severity: str) -> str:
     """
-    Returns (label, css_class, hex_color) for freshness stage.
+    Returns CSS class for hazard severity string.
     """
-    stage_lower = (stage or "").lower()
-    if "fresh" in stage_lower and "moderately" not in stage_lower:
-        return "Fresh (Safe to Eat)", "badge-emerald", "#10B981"
-    elif "moderately" in stage_lower or "moderate" in stage_lower:
-        return "Moderately Fresh (Consume Promptly)", "badge-amber", "#F59E0B"
+    sev = (severity or "").strip().lower()
+    if "crit" in sev:
+        return "severity-critical"
+    elif "high" in sev:
+        return "severity-high"
+    elif "med" in sev:
+        return "severity-medium"
     else:
-        return "Spoiled (Hazard - Discard)", "badge-rose", "#EF4444"
+        return "severity-low"
 
-def get_hygiene_score_badge(score: int) -> tuple[str, str, str]:
+def generate_audit_markdown_report(data: Dict[str, Any], project_name: str = "Active Site Inspection") -> str:
     """
-    Returns (rating_grade, css_class, hex_color) for Kitchen Hygiene compliance score.
+    Generates a formal, printable markdown audit report.
     """
-    if score >= 90:
-        return "Grade A+ (Exemplary Compliance)", "badge-emerald", "#10B981"
-    elif score >= 80:
-        return "Grade A (Meets HACCP Standard)", "badge-cyan", "#06B6D4"
-    elif score >= 70:
-        return "Grade B (Minor Corrections Required)", "badge-amber", "#F59E0B"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    score = data.get("safety_score", 0)
+    status = data.get("overall_status", "Needs Attention")
+    workers = data.get("workers_detected", 0)
+    hazards = data.get("site_hazards", [])
+    ppe = data.get("ppe_detection", [])
+
+    report = f"""# 🏗️ CONSTRUCTION SITE SAFETY & PPE COMPLIANCE AUDIT
+**Project / Zone:** {project_name}  
+**Timestamp:** {timestamp}  
+**Auditor Engine:** Multimodal Construction Intelligence AI (OSHA 1926 & IS 456:2000 Grounded)  
+**Safety Score:** {score} / 100  
+**Overall Regulatory Status:** {status}  
+**Active Personnel Detected:** {workers}  
+
+---
+
+## 🦺 PPE DETECTIONS & COMPLIANCE CHECKLIST
+| Item | Status | Compliance Level | Regulatory Code | Remarks |
+|---|---|---|---|---|
+"""
+    for item in ppe:
+        report += f"| {item.get('item', 'N/A')} | {item.get('status', 'N/A')} | {item.get('compliance_rate', 'N/A')} | {item.get('code_reference', 'OSHA / IS 456')} | {item.get('notes', '')} |\n"
+
+    report += """
+---
+
+## ⚠️ IDENTIFIED SITE HAZARDS & CORRECTIVE REMEDIES
+"""
+    if not hazards:
+        report += "*No critical hazards identified. Site complies with core safety norms.*\n"
     else:
-        return "Grade C / Fail (Critical Violation)", "badge-rose", "#EF4444"
+        for idx, h in enumerate(hazards, start=1):
+            report += f"""
+### Hazard #{idx}: {h.get('hazard_type', 'Unclassified')} [{h.get('severity', 'Medium').upper()}]
+- **Location / Element:** {h.get('location', 'Site Perimeter')}
+- **Regulatory Violation:** {h.get('regulatory_code', 'OSHA 1926 / IS 3696')}
+- **Corrective Action Required:** {h.get('corrective_remedy', 'Immediate mitigation required.')}
+"""
+
+    report += f"""
+---
+## 📋 EXECUTIVE SUMMARY
+{data.get('executive_summary', 'Routine site inspection completed. Refer to hazard remedies above.')}
+
+---
+*Report generated autonomously by Multimodal Construction Intelligence Platform — Skill Wallet Capstone Project 1.*
+"""
+    return report
